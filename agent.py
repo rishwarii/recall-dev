@@ -314,7 +314,7 @@ def remember_note(company: str, note: str) -> dict:
         total = _counts(conn, cid)
         return _pack(
             company,
-            "Logged a new note",
+            "what I just learned",
             cid,
             total,
             [{"text": t, "distance": float(d)} for t, d in hits],
