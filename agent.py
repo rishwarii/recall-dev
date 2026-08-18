@@ -14,6 +14,7 @@ import urllib.parse
 import urllib.request
 
 from memory import (
+    _bedrock_runtime,
     get_connection,
     init_schema,
     recall,
@@ -87,8 +88,6 @@ def _write_new(conn, entity_id, facts: list[str], source_url: str | None) -> lis
 
 
 def _bedrock_brief(company: str, goal: str, remembered: list[str]) -> str | None:
-    import boto3
-
     bullets = "\n".join(f"- {t}" for t in remembered) or "- (none yet)"
     prompt = (
         f"You are a meeting-prep chief of staff. Write a tight one-page brief.\n"
@@ -102,10 +101,7 @@ def _bedrock_brief(company: str, goal: str, remembered: list[str]) -> str | None
         "4) Suggested opening line\n"
         "Use only the facts given. Do not invent."
     )
-    client = boto3.client(
-        "bedrock-runtime",
-        region_name=os.environ.get("AWS_REGION", "us-east-1"),
-    )
+    client = _bedrock_runtime()
     models = [BRIEF_MODEL, "amazon.titan-text-lite-v1"]
     body = json.dumps(
         {

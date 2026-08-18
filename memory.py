@@ -50,17 +50,35 @@ def _embed_local(text: str) -> list[float]:
     return list(_model.embed([text]))[0].tolist()
 
 
-def _embed_bedrock(text: str) -> list[float]:
-    """Text -> 1024-dim vector via Bedrock Titan Text Embeddings V2."""
+def _aws_region() -> str:
+    region = (
+        os.environ.get("AWS_REGION")
+        or os.environ.get("AWS_DEFAULT_REGION")
+        or "us-east-1"
+    ).strip()
+    if region.lower() in {"", "bedrock", "local"}:
+        return "us-east-1"
+    return region
+
+
+def _bedrock_runtime():
+    """Bedrock Runtime client with an explicit regional endpoint."""
     import boto3
 
     global _bedrock_client
     if _bedrock_client is None:
+        region = _aws_region()
         _bedrock_client = boto3.client(
             "bedrock-runtime",
-            region_name=os.environ.get("AWS_REGION", "us-east-1"),
+            region_name=region,
+            endpoint_url=f"https://bedrock-runtime.{region}.amazonaws.com",
         )
-    resp = _bedrock_client.invoke_model(
+    return _bedrock_client
+
+
+def _embed_bedrock(text: str) -> list[float]:
+    """Text -> 1024-dim vector via Bedrock Titan Text Embeddings V2."""
+    resp = _bedrock_runtime().invoke_model(
         modelId="amazon.titan-embed-text-v2:0",
         body=json.dumps({"inputText": text}),
     )
