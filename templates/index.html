@@ -166,8 +166,8 @@
 
       {% if result %}
       <p class="meta">
-        {{ result.total_facts }} facts stored for {{ result.company }}
-        · brief via {{ result.brief_source }}
+        {{ result.total_facts }} facts · {{ result.research_kind }} research
+        · {{ result.latency_ms }} ms · brief via {{ result.brief_source }}
         {% if result.source_url %} · <a href="{{ result.source_url }}" target="_blank" rel="noreferrer">research source</a>{% endif %}
       </p>
       <div class="grid">
@@ -198,6 +198,22 @@
           </ul>
         </div>
       </div>
+      {% if result.people %}
+      <h2 style="margin-top:22px">People</h2>
+      <ul>
+        {% for p in result.people %}
+        <li>{{ p.name }}{% if p.role %} — {{ p.role }}{% endif %}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% if result.questions %}
+      <h2 style="margin-top:22px">Three questions to ask</h2>
+      <ul>
+        {% for q in result.questions %}
+        <li>{{ loop.index }}. {{ q }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
       <h2 style="margin-top:22px">Open promises</h2>
       <ul>
         {% for text in result.open_items %}
@@ -209,6 +225,9 @@
       {% if result.brief %}
       <h2 style="margin-top:22px">Brief</h2>
       <div class="brief">{{ result.brief }}</div>
+      {% if result.s3_url %}
+      <p class="meta">Brief stored at {{ result.s3_url }}</p>
+      {% endif %}
       {% endif %}
       {% endif %}
     </div>

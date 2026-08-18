@@ -1,25 +1,25 @@
-# Recall PRD (hackathon slice)
+# Recall PRD (hackathon slice — what ships)
 
-## Problem
-Every meeting-prep tool researches a company as if you have never spoken. Promises, pricing changes, and follow-ups die when the process ends.
+Full original PRD intent: compounding meeting-prep memory on CockroachDB + Bedrock.
 
-## Product
-Recall is an agentic meeting-prep dossier with **compounding memory**. Facts live in CockroachDB. Embeddings come from Amazon Bedrock. Two primitives sit under everything: `write_facts` and `recall`.
+## Implemented in prod
 
-## Features (must ship)
+- Data model: `companies`, `people`, `meetings`, `meeting_participants`, `memory_facts`, `questions`, `followups`, `briefs`
+- Distributed vector search on `memory_facts.embedding` (`<=>`); vector index best-effort
+- Cold vs **delta** research (skip public scrape on repeat; still recall)
+- Brief with “last time / still open / three questions”
+- Ask memory (chat-tab RAG) and post-meeting **Write fact**
+- Optional S3 brief store if `S3_BUCKET` is set
+- Structured prep logs (`research_kind`, latency, cache hit)
+- Hosted UI: https://recall-dev-x92e.onrender.com
+- AWS: **Amazon Bedrock** (required). S3 optional.
+- Cockroach: vector recall + Managed MCP (cluster `c1f054db-ac26-4bd4-b175-2bd03cda7b17`)
 
-| Feature | Where |
-|---|---|
-| Persistent vector memory | `memory.py` → `memory_facts` |
-| Semantic recall (not keyword search) | `recall()` + **Ask memory** |
-| Write what you learned | `write_facts()` + **Write fact** |
-| Company resolve / create | `resolve_company()` |
-| Public research into memory | Wikipedia → `write_facts` on **Prep** |
-| Meeting brief | Bedrock text if enabled, else structured template |
-| Open promises / still owe them | **Open promises** list + stamp |
-| Compounding across runs | second Prep writes nothing new if known |
-| Roster of companies in memory | homepage meta line |
-| Hosted UI | https://recall-dev-x92e.onrender.com |
+## Not in this slice (PRD cut-list)
 
-## Out of scope this slice
-Calendar sync, email ingest, multi-user auth, Bedrock 1024 schema.sql load while on a mixed local dim.
+- Google OAuth / Gmail / calendar poll
+- AWS Lambda + Step Functions + EventBridge Scheduler (prep is in-process)
+- Voice deep-dive
+- Multi-user RBAC / MCP write path in this repo
+
+Protect **second-meeting recall** first — that is live.

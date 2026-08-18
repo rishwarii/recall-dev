@@ -217,6 +217,7 @@ def _pack(
     brief_source: str,
     open_items: list[str],
     mode: str,
+    extra: dict | None = None,
 ) -> dict:
     return {
         "company": company,
@@ -234,7 +235,45 @@ def _pack(
         "open_items": open_items,
         "mode": mode,
         "companies": list_companies(),
+        "questions": extra.get("questions", []) if extra else [],
+        "people": extra.get("people", []) if extra else [],
+        "followups": extra.get("followups", []) if extra else [],
+        "research_kind": extra.get("research_kind", "cold") if extra else "cold",
+        "s3_url": extra.get("s3_url") if extra else None,
+        "latency_ms": extra.get("latency_ms") if extra else None,
     }
+
+
+def _put_brief_s3(meeting_id, content: str) -> str | None:
+    bucket = os.environ.get("S3_BUCKET")
+    if not bucket:
+        return None
+    import boto3
+
+    key = f"briefs/{meeting_id}.txt"
+    boto3.client("s3", region_name=os.environ.get("AWS_REGION", "us-east-1")).put_object(
+        Bucket=bucket,
+        Key=key,
+        Body=content.encode("utf-8"),
+        ContentType="text/plain; charset=utf-8",
+    )
+    return f"s3://{bucket}/{key}"
+
+
+def _suggest_questions(facts: list[str]) -> list[str]:
+    qs = []
+    blob = " ".join(facts).lower()
+    if "pric" in blob:
+        qs.append("How is the self-serve pricing tier landing with customers?")
+    if "api" in blob or "promised" in blob:
+        qs.append("Did you get the API documentation we promised — still open on our side?")
+    if "series" in blob or "fund" in blob:
+        qs.append("How is the Series B changing the product roadmap?")
+    while len(qs) < 3:
+        qs.append("What would make this next quarter a win with us?")
+        if len(qs) >= 3:
+            break
+    return qs[:3]
 
 
 def ask_memory(company: str, question: str) -> dict:
@@ -294,20 +333,37 @@ def remember_note(company: str, note: str) -> dict:
 
 
 def prep_meeting(company: str, goal: str, domain: str | None = None) -> dict:
-    """Research if needed, persist new facts, recall, generate a brief."""
+    """Resolve → recall → delta/cold research → brief → write memory."""
+    import time
+
+    t0 = time.monotonic()
     with get_connection() as conn:
         init_schema(conn)
         cid = resolve_company(conn, company, domain)
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT last_researched_at FROM companies WHERE id = %s",
+                (cid,),
+            )
+            last = cur.fetchone()[0]
+            cur.execute(
+                "SELECT COUNT(*) FROM memory_facts WHERE entity_id = %s",
+                (cid,),
+            )
+            prior = cur.fetchone()[0]
+        research_kind = "delta" if prior and last else "cold"
         before = recall(conn, cid, goal or company, k=8)
         seeded = _write_new(conn, cid, SEED_FACTS.get(company, []), "meeting-notes")
         researched, source, research_error = [], None, None
-        try:
-            researched, source = research_company(company)
-        except Exception as exc:
-            research_error = str(exc)
+        if research_kind == "cold":
+            try:
+                researched, source = research_company(company)
+            except Exception as exc:
+                research_error = str(exc)
         newly_written = _write_new(conn, cid, researched, source)
         after = recall(conn, cid, goal or company, k=8)
         texts = [t for t, _ in after]
+        questions = _suggest_questions(texts)
         brief = None
         brief_source = "template"
         try:
@@ -318,13 +374,106 @@ def prep_meeting(company: str, goal: str, domain: str | None = None) -> dict:
             brief = None
         if not brief:
             brief = _template_brief(company, goal, after)
+            opens = [t for t, _ in after if re.search(r"promised|still open", t, re.I)]
+            brief = (
+                f"Meeting: now — {company} (returning)\n\n"
+                f"Recall says: {opens[0] if opens else 'No open promises on file.'}\n\n"
+                f"{brief}\n\n"
+                "Three questions to ask:\n"
+                + "\n".join(f"{i}. {q}" for i, q in enumerate(questions, 1))
+            )
+        mid = None
+        s3_url = None
+        people = []
+        followups = []
         with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO meetings (title, company_id, source, agenda)
+                VALUES (%s, %s, 'web', %s) RETURNING id
+                """,
+                (f"Prep — {company}", cid, goal),
+            )
+            mid = cur.fetchone()[0]
+            cur.execute(
+                "SELECT id FROM people WHERE company_id = %s AND name = %s",
+                (cid, "Jordan Lee"),
+            )
+            prow = cur.fetchone()
+            if not prow:
+                cur.execute(
+                    """
+                    INSERT INTO people (name, company_id, role)
+                    VALUES (%s, %s, %s) RETURNING id
+                    """,
+                    ("Jordan Lee", cid, "VP Product"),
+                )
+                pid = cur.fetchone()[0]
+            else:
+                pid = prow[0]
+            cur.execute(
+                """
+                INSERT INTO meeting_participants (meeting_id, person_id)
+                VALUES (%s, %s) ON CONFLICT DO NOTHING
+                """,
+                (mid, pid),
+            )
+            for q in questions:
+                cur.execute(
+                    "INSERT INTO questions (meeting_id, text) VALUES (%s, %s)",
+                    (mid, q),
+                )
+            for text in _open_loops(conn, cid):
+                cur.execute(
+                    """
+                    INSERT INTO followups (meeting_id, company_id, commitment_text, status)
+                    VALUES (%s, %s, %s, 'open')
+                    """,
+                    (mid, cid, text),
+                )
+            try:
+                s3_url = _put_brief_s3(mid, brief)
+            except Exception:
+                s3_url = None
+            cur.execute(
+                "INSERT INTO briefs (meeting_id, content, s3_url) VALUES (%s, %s, %s)",
+                (mid, brief, s3_url),
+            )
             cur.execute(
                 "UPDATE companies SET last_researched_at = now() WHERE id = %s",
                 (cid,),
             )
+            cur.execute(
+                "SELECT name, role FROM people WHERE company_id = %s ORDER BY created_at",
+                (cid,),
+            )
+            people = [{"name": n, "role": r} for n, r in cur.fetchall()]
+            cur.execute(
+                """
+                SELECT commitment_text, status FROM followups
+                WHERE company_id = %s AND status = 'open'
+                LIMIT 8
+                """,
+                (cid,),
+            )
+            followups = [{"text": t, "status": s} for t, s in cur.fetchall()]
         conn.commit()
         total = _counts(conn, cid)
+        latency_ms = int((time.monotonic() - t0) * 1000)
+        print(
+            json.dumps(
+                {
+                    "event": "prep",
+                    "company": company,
+                    "research_kind": research_kind,
+                    "facts": total,
+                    "delta_writes": len(newly_written) + len(seeded),
+                    "latency_ms": latency_ms,
+                    "cache_hit": research_kind == "delta",
+                }
+            ),
+            flush=True,
+        )
         return _pack(
             company,
             goal,
@@ -340,4 +489,12 @@ def prep_meeting(company: str, goal: str, domain: str | None = None) -> dict:
             brief_source,
             _open_loops(conn, cid),
             "prep",
+            extra={
+                "questions": questions,
+                "people": people,
+                "followups": followups,
+                "research_kind": research_kind,
+                "s3_url": s3_url,
+                "latency_ms": latency_ms,
+            },
         )

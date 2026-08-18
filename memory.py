@@ -125,11 +125,17 @@ def init_schema(conn) -> None:
                 id     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 name   STRING NOT NULL,
                 domain STRING,
+                description STRING,
                 last_researched_at TIMESTAMPTZ,
                 created_at TIMESTAMPTZ DEFAULT now()
             )
             """
         )
+        for stmt in (
+            "ALTER TABLE companies ADD COLUMN IF NOT EXISTS description STRING",
+            "ALTER TABLE companies ADD COLUMN IF NOT EXISTS last_researched_at TIMESTAMPTZ",
+        ):
+            cur.execute(stmt)
         cur.execute(
             f"""
             CREATE TABLE IF NOT EXISTS memory_facts (
@@ -144,7 +150,85 @@ def init_schema(conn) -> None:
             )
             """
         )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS people (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                name STRING NOT NULL,
+                company_id UUID,
+                role STRING,
+                links_json STRING,
+                created_at TIMESTAMPTZ DEFAULT now()
+            )
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS meetings (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                calendar_event_id STRING,
+                title STRING,
+                scheduled_at TIMESTAMPTZ DEFAULT now(),
+                company_id UUID,
+                source STRING DEFAULT 'web',
+                agenda STRING
+            )
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS meeting_participants (
+                meeting_id UUID NOT NULL,
+                person_id UUID NOT NULL,
+                PRIMARY KEY (meeting_id, person_id)
+            )
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS questions (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                meeting_id UUID,
+                text STRING NOT NULL,
+                was_asked BOOL DEFAULT false
+            )
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS followups (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                meeting_id UUID,
+                company_id UUID,
+                commitment_text STRING NOT NULL,
+                due DATE,
+                status STRING DEFAULT 'open'
+            )
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS briefs (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                meeting_id UUID,
+                content STRING NOT NULL,
+                s3_url STRING,
+                created_at TIMESTAMPTZ DEFAULT now()
+            )
+            """
+        )
     conn.commit()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE VECTOR INDEX IF NOT EXISTS memory_facts_embedding_idx
+                ON memory_facts (embedding)
+                """
+            )
+        conn.commit()
+    except Exception:
+        conn.rollback()
 
 
 def resolve_company(conn, name: str, domain: str | None = None) -> uuid.UUID:
@@ -197,7 +281,7 @@ def recall(conn, entity_id: uuid.UUID, query: str, k: int = 5):
             SELECT fact_text, embedding <=> %s::VECTOR AS distance
             FROM memory_facts
             WHERE entity_id = %s
-            ORDER BY distance
+            ORDER BY distance, created_at DESC
             LIMIT %s
             """,
             (qv, entity_id, k),
