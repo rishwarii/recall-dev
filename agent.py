@@ -245,7 +245,7 @@ def _pack(
 
 
 def _put_brief_s3(meeting_id, content: str) -> str | None:
-    bucket = os.environ.get("S3_BUCKET")
+    bucket = os.environ.get("S3_BUCKET") or "recall-dev-briefs-813841052170"
     if not bucket:
         return None
     import boto3
