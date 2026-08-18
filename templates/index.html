@@ -126,14 +126,12 @@
         <li>Optional: <strong>Ask memory</strong> a question, or <strong>Write fact</strong> after a call.</li>
       </ol>
 
-      {% set show_goal = 'pricing changes and open follow-ups' %}
-      {% if result and result.mode != 'remember' %}
-        {% set show_goal = result.goal %}
-      {% endif %}
+      {% set show_goal = 'What did they change about pricing?' %}
+      {% set show_company = 'Acme Corp' %}
 
       <form class="main" method="post" action="/prep">
         <label>Who are you meeting?
-          <input name="company" value="{{ result.company if result else 'Acme Corp' }}" required />
+          <input name="company" value="{{ show_company }}" required />
         </label>
         <label>What do you want to remember going in?
           <input name="goal" value="{{ show_goal }}" required />
@@ -147,7 +145,7 @@
 
       <form class="note" method="post" action="/remember">
         <label>After the call, save a promise (this is how memory grows)
-          <input type="hidden" name="company" value="{{ result.company if result else 'Acme Corp' }}" />
+          <input type="hidden" name="company" value="{{ show_company }}" />
           <textarea name="note" placeholder="You promised Acme a security review — still open."></textarea>
         </label>
         <button class="secondary" type="submit">3. Write fact into Cockroach</button>
