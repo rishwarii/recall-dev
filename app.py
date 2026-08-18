@@ -53,7 +53,13 @@ def health():
 def prep():
     company = (request.form.get("company") or "Acme Corp").strip()
     goal = (request.form.get("goal") or "pricing changes and open follow-ups").strip()
-    result = prep_meeting(company, goal)
+    try:
+        result = prep_meeting(company, goal)
+    except Exception as exc:
+        return (
+            f"<h1>Prep failed</h1><pre>{exc}</pre><p><a href='/'>Back</a></p>",
+            500,
+        )
     return render_template("index.html", result=result)
 
 

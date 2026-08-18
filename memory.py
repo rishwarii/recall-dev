@@ -80,9 +80,18 @@ def _vec(v: list[float]) -> str:
     return "[" + ",".join(f"{x:.6f}" for x in v) + "]"
 
 
+def _connect_url() -> str:
+    """Render has no ~/.postgresql/root.crt; use OS trust store for verify-full."""
+    url = DATABASE_URL
+    if "sslrootcert=" not in url.lower():
+        join = "&" if "?" in url else "?"
+        url = f"{url}{join}sslrootcert=system"
+    return url
+
+
 def get_connection():
     """One place to open a connection."""
-    return psycopg.connect(DATABASE_URL)
+    return psycopg.connect(_connect_url())
 
 
 def init_schema(conn) -> None:
