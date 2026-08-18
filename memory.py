@@ -81,12 +81,16 @@ def _vec(v: list[float]) -> str:
 
 
 def _connect_url() -> str:
-    """Render has no ~/.postgresql/root.crt; use OS trust store for verify-full."""
-    url = DATABASE_URL
-    if "sslrootcert=" not in url.lower():
-        join = "&" if "?" in url else "?"
-        url = f"{url}{join}sslrootcert=system"
-    return url
+    """TLS on, no Cockroach CA file. Render's system store fails verify-full."""
+    from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
+    parts = urlsplit(DATABASE_URL)
+    query = dict(parse_qsl(parts.query, keep_blank_values=True))
+    query["sslmode"] = "require"
+    query.pop("sslrootcert", None)
+    return urlunsplit(
+        (parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment)
+    )
 
 
 def get_connection():
