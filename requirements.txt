@@ -1,0 +1,4 @@
+psycopg[binary]
+boto3
+flask
+gunicorn

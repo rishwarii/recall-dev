@@ -18,20 +18,30 @@ Repo: [github.com/rishwarii/recall-dev](https://github.com/rishwarii/recall-dev)
 
 ## AWS service used
 
-**Amazon Bedrock** — Titan Text Embeddings V2 for production embeddings (`EMBED_BACKEND=bedrock`).
+**Amazon Bedrock** — Titan Text Embeddings V2 for vectors (`EMBED_BACKEND=bedrock`). Titan Text Express (or Lite) drafts the meeting brief when that model is enabled; otherwise Recall still prints a structured brief from memory.
+
+## Phase 2 — the agent on top of memory
+
+`write_facts` / `recall` are still the spine. Phase 2 adds:
+
+1. **Research** — Wikipedia summary split into facts and written into `memory_facts` (duplicates skipped).
+2. **Brief** — recalled facts turned into a one-page meeting dossier.
+3. **Local UI** — `python app.py` then open http://127.0.0.1:5000. For a public URL, deploy as a Python web service (Render), not GitHub Pages.
+
+Second click on the same company writes nothing new if memory already has it. That is compounding, visible in the UI.
 
 ## How memory compounds
 
 Phase 1 writes facts into the persistent `memory_facts` table (not a throwaway). After `test_phase1.py` ran, a **new Python process** called `recall` with **no** `write_facts` first and still returned the pricing fact. That is the difference from a one-shot tool: memory survives across runs because CockroachDB holds it.
 
-Demo beat for the video: ask “what did they change about pricing?”, quit the process, restart `demo.py`, ask again — the same fact comes back by meaning.
+Demo beat for the video: ask “what did they change about pricing?”, quit the process, restart, ask again — the same fact comes back by meaning.
 
 ## Setup
 
 Never hardcode secrets. Use environment variables in the shell session.
 
 ```powershell
-pip install "psycopg[binary]" fastembed boto3
+pip install "psycopg[binary]" fastembed boto3 flask
 
 $env:PYTHONIOENCODING = "utf-8"
 $env:DATABASE_URL = "postgresql://USER:PASSWORD@HOST:26257/defaultdb?sslmode=verify-full"
@@ -48,9 +58,25 @@ Do **not** load `schema.sql` while using the local 384-dim embedder; `memory.py`
 ```powershell
 python test_phase1.py
 python demo.py
+python app.py
 ```
 
-Ask `What did Acme change about pricing?` — the self-serve pricing tier should rank first.
+Then open http://127.0.0.1:5000
+
+CLI: ask `What did Acme change about pricing?` — the self-serve pricing tier should rank first.
+
+UI: company `Acme Corp`, goal `pricing changes and open follow-ups`, click **Prep this meeting**. Restart the server and click again — facts are still there.
+
+## Hosted demo (not GitHub Pages)
+
+GitHub Pages is static files only. Recall needs Python + CockroachDB + Bedrock, so the public UI belongs on a Python host such as [Render](https://render.com).
+
+1. Push this repo.
+2. Cockroach Cloud → allow networks → add `0.0.0.0/0` for the hackathon (or the host will be blocked).
+3. Render → New Web Service → connect `rishwarii/recall-dev` → use `requirements.txt` / `Procfile`.
+4. Set env vars in the Render dashboard (never in git): `DATABASE_URL`, `EMBED_BACKEND=bedrock`, `AWS_REGION=us-east-1`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`.
+
+The public URL from Render is the Devpost “try it out” link.
 
 ## License
 

@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Recall — meeting dossier</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Source+Sans+3:wght@400;600&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #15232b;
+      --paper: #e8eef2;
+      --panel: #f7fafb;
+      --brass: #c4a35a;
+      --stamp: #c23b22;
+      --graph: #b7c4ce;
+      --muted: #5c6e7a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        linear-gradient(90deg, transparent 24px, rgba(183,196,206,.35) 25px) 0 0 / 28px 28px,
+        var(--paper);
+      font-family: "Source Sans 3", sans-serif;
+    }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 32px 20px 64px; }
+    .tab {
+      display: inline-block;
+      background: var(--brass);
+      color: var(--ink);
+      font-family: Syne, sans-serif;
+      font-weight: 800;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      font-size: 12px;
+      padding: 8px 18px 6px;
+      border-radius: 8px 8px 0 0;
+    }
+    .dossier {
+      background: var(--panel);
+      border: 1px solid var(--ink);
+      box-shadow: 8px 8px 0 rgba(21,35,43,.18);
+      padding: 28px 28px 36px;
+    }
+    h1 {
+      font-family: Syne, sans-serif;
+      font-size: clamp(28px, 5vw, 44px);
+      line-height: .95;
+      margin: 0 0 8px;
+    }
+    .lede { color: var(--muted); margin: 0 0 24px; max-width: 46rem; }
+    form { display: grid; gap: 12px; grid-template-columns: 1fr 1.4fr auto; align-items: end; }
+    @media (max-width: 720px) { form { grid-template-columns: 1fr; } }
+    label { display: grid; gap: 6px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+    input {
+      font: 16px "Source Sans 3", sans-serif;
+      padding: 10px 12px;
+      border: 1px solid var(--ink);
+      background: #fff;
+      color: var(--ink);
+    }
+    button {
+      font-family: Syne, sans-serif;
+      font-weight: 700;
+      padding: 12px 18px;
+      border: 1px solid var(--ink);
+      background: var(--ink);
+      color: var(--paper);
+      cursor: pointer;
+    }
+    button:hover { background: var(--stamp); border-color: var(--stamp); }
+    .meta {
+      margin-top: 18px;
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .grid { display: grid; gap: 16px; grid-template-columns: 1fr 1fr; margin-top: 22px; }
+    @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+    h2 {
+      font-family: Syne, sans-serif;
+      font-size: 18px;
+      margin: 0 0 10px;
+    }
+    ul { margin: 0; padding: 0; list-style: none; }
+    li {
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 13px;
+      line-height: 1.45;
+      padding: 8px 0;
+      border-bottom: 1px dashed var(--graph);
+    }
+    .dist { color: var(--muted); }
+    .stamp {
+      display: inline-block;
+      border: 2px solid var(--stamp);
+      color: var(--stamp);
+      font-family: Syne, sans-serif;
+      font-size: 11px;
+      letter-spacing: .14em;
+      padding: 2px 8px;
+      transform: rotate(-6deg);
+      margin-left: 8px;
+    }
+    .brief {
+      margin-top: 22px;
+      white-space: pre-wrap;
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 14px;
+      line-height: 1.55;
+      background: #fff;
+      border-left: 6px solid var(--brass);
+      padding: 18px 20px;
+    }
+    a { color: var(--stamp); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="tab">Recall dossier</div>
+    <div class="dossier">
+      <h1>Walk in already knowing them.</h1>
+      <p class="lede">Persistent memory in CockroachDB. Embeddings from Amazon Bedrock. Research writes new facts; recall pulls what still matters for this meeting.</p>
+      <form method="post" action="/prep">
+        <label>Company
+          <input name="company" value="{{ result.company if result else 'Acme Corp' }}" required />
+        </label>
+        <label>This meeting is about
+          <input name="goal" value="{{ result.goal if result else 'pricing changes and open follow-ups' }}" required />
+        </label>
+        <button type="submit">Prep this meeting</button>
+      </form>
+
+      {% if result %}
+      <p class="meta">
+        {{ result.total_facts }} facts stored for {{ result.company }}
+        · brief via {{ result.brief_source }}
+        {% if result.source_url %} · <a href="{{ result.source_url }}" target="_blank" rel="noreferrer">research source</a>{% endif %}
+      </p>
+      <div class="grid">
+        <div>
+          <h2>Already in memory</h2>
+          <ul>
+            {% for row in result.already_knew %}
+            <li>
+              <span class="dist">{{ '%.3f'|format(row.distance) }}</span>
+              {{ row.text }}
+              {% if 'still open' in row.text|lower or 'promised' in row.text|lower %}
+              <span class="stamp">Still open</span>
+              {% endif %}
+            </li>
+            {% else %}
+            <li>Empty — first meeting. Research will start the file.</li>
+            {% endfor %}
+          </ul>
+        </div>
+        <div>
+          <h2>Just written this run</h2>
+          <ul>
+            {% for text in result.seeded + result.researched %}
+            <li>{{ text }}</li>
+            {% else %}
+            <li>Nothing new. Memory already had it — that is compounding.</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+      <h2 style="margin-top:22px">Brief</h2>
+      <div class="brief">{{ result.brief }}</div>
+      {% endif %}
+    </div>
+  </div>
+</body>
+</html>

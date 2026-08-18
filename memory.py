@@ -22,13 +22,12 @@ import os
 import uuid
 
 import psycopg
-from fastembed import TextEmbedding
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 EMBED_BACKEND = os.environ.get("EMBED_BACKEND", "local").strip().lower()
 
-# Local embedder. 384-dim. Downloads ~100MB once, then cached.
-_model = TextEmbedding("BAAI/bge-small-en-v1.5")
+# Local model is lazy-loaded so Bedrock deploys do not need fastembed.
+_model = None
 _bedrock_client = None
 
 if EMBED_BACKEND == "local":
@@ -43,6 +42,11 @@ else:
 
 def _embed_local(text: str) -> list[float]:
     """Text -> 384-dim vector, locally."""
+    global _model
+    if _model is None:
+        from fastembed import TextEmbedding
+
+        _model = TextEmbedding("BAAI/bge-small-en-v1.5")
     return list(_model.embed([text]))[0].tolist()
 
 

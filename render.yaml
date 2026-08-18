@@ -1,0 +1,22 @@
+# Blueprint for Render. Create a free Web Service from this repo.
+# Secrets stay in the Render dashboard — never in git.
+services:
+  - type: web
+    name: recall-dev
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 120 --workers 1
+    envVars:
+      - key: EMBED_BACKEND
+        value: bedrock
+      - key: AWS_REGION
+        value: us-east-1
+      - key: PYTHONIOENCODING
+        value: utf-8
+      - key: DATABASE_URL
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
