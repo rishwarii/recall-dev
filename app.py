@@ -44,6 +44,11 @@ def home():
     return render_template("index.html", result=None)
 
 
+@app.get("/health")
+def health():
+    return {"ok": True}
+
+
 @app.post("/prep")
 def prep():
     company = (request.form.get("company") or "Acme Corp").strip()
