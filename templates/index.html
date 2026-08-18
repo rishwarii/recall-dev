@@ -54,6 +54,16 @@
     }
     .lede { color: var(--muted); margin: 0 0 24px; max-width: 46rem; }
     form { display: grid; gap: 12px; grid-template-columns: 1fr 1.4fr auto; align-items: end; }
+    form.note { grid-template-columns: 1fr 1.6fr auto; margin-top: 12px; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    button.secondary { background: #fff; color: var(--ink); }
+    textarea {
+      font: 16px "Source Sans 3", sans-serif;
+      padding: 10px 12px;
+      border: 1px solid var(--ink);
+      min-height: 44px;
+      resize: vertical;
+    }
     @media (max-width: 720px) { form { grid-template-columns: 1fr; } }
     label { display: grid; gap: 6px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
     input {
@@ -129,11 +139,30 @@
         <label>Company
           <input name="company" value="{{ result.company if result else 'Acme Corp' }}" required />
         </label>
-        <label>This meeting is about
+        <label>This meeting is about / ask
           <input name="goal" value="{{ result.goal if result else 'pricing changes and open follow-ups' }}" required />
         </label>
-        <button type="submit">Prep this meeting</button>
+        <div class="actions">
+          <button type="submit">Prep this meeting</button>
+          <button class="secondary" type="submit" formaction="/ask">Ask memory</button>
+        </div>
       </form>
+      <form class="note" method="post" action="/remember">
+        <label>Company
+          <input name="company" value="{{ result.company if result else 'Acme Corp' }}" required />
+        </label>
+        <label>After the call, remember this
+          <textarea name="note" placeholder="You promised Acme a security review — still open."></textarea>
+        </label>
+        <button class="secondary" type="submit">Write fact</button>
+      </form>
+
+      {% set roster = result.companies if result else companies %}
+      {% if roster %}
+      <p class="meta">Companies in memory:
+        {% for c in roster %}{{ c.name }} ({{ c.facts }}){% if not loop.last %} · {% endif %}{% endfor %}
+      </p>
+      {% endif %}
 
       {% if result %}
       <p class="meta">
@@ -169,8 +198,18 @@
           </ul>
         </div>
       </div>
+      <h2 style="margin-top:22px">Open promises</h2>
+      <ul>
+        {% for text in result.open_items %}
+        <li>{{ text }} <span class="stamp">Still open</span></li>
+        {% else %}
+        <li>No open promises flagged.</li>
+        {% endfor %}
+      </ul>
+      {% if result.brief %}
       <h2 style="margin-top:22px">Brief</h2>
       <div class="brief">{{ result.brief }}</div>
+      {% endif %}
       {% endif %}
     </div>
   </div>

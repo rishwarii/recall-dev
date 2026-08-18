@@ -158,6 +158,141 @@ def _template_brief(company: str, goal: str, remembered: list[tuple[str, float]]
     )
 
 
+def _counts(conn, entity_id) -> int:
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT COUNT(*) FROM memory_facts WHERE entity_id = %s",
+            (entity_id,),
+        )
+        return cur.fetchone()[0]
+
+
+def _open_loops(conn, entity_id) -> list[str]:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT fact_text FROM memory_facts
+            WHERE entity_id = %s
+              AND (
+                fact_text ILIKE '%%still open%%'
+                OR fact_text ILIKE '%%promised%%'
+                OR fact_text ILIKE '%%owe them%%'
+                OR fact_text ILIKE '%%follow-up%%'
+              )
+            ORDER BY created_at DESC
+            """,
+            (entity_id,),
+        )
+        return [row[0] for row in cur.fetchall()]
+
+
+def list_companies() -> list[dict]:
+    with get_connection() as conn:
+        init_schema(conn)
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT c.name, COUNT(m.id) AS n
+                FROM companies c
+                LEFT JOIN memory_facts m ON m.entity_id = c.id
+                GROUP BY c.name
+                ORDER BY n DESC, c.name
+                """
+            )
+            return [{"name": n, "facts": int(k)} for n, k in cur.fetchall()]
+
+
+def _pack(
+    company: str,
+    goal: str,
+    cid,
+    total: int,
+    already_knew,
+    seeded,
+    researched,
+    source,
+    research_error,
+    recalled,
+    brief: str,
+    brief_source: str,
+    open_items: list[str],
+    mode: str,
+) -> dict:
+    return {
+        "company": company,
+        "company_id": str(cid),
+        "goal": goal,
+        "total_facts": total,
+        "already_knew": already_knew,
+        "seeded": seeded,
+        "researched": researched,
+        "source_url": source,
+        "research_error": research_error,
+        "recalled": recalled,
+        "brief": brief,
+        "brief_source": brief_source,
+        "open_items": open_items,
+        "mode": mode,
+        "companies": list_companies(),
+    }
+
+
+def ask_memory(company: str, question: str) -> dict:
+    """Semantic recall only — no research, no writes."""
+    with get_connection() as conn:
+        init_schema(conn)
+        cid = resolve_company(conn, company)
+        hits = recall(conn, cid, question or company, k=5)
+        opens = _open_loops(conn, cid)
+        total = _counts(conn, cid)
+        return _pack(
+            company,
+            question,
+            cid,
+            total,
+            [{"text": t, "distance": float(d)} for t, d in hits],
+            [],
+            [],
+            None,
+            None,
+            [{"text": t, "distance": float(d)} for t, d in hits],
+            "",
+            "recall-only",
+            opens,
+            "ask",
+        )
+
+
+def remember_note(company: str, note: str) -> dict:
+    """Persist a new meeting note via write_facts."""
+    facts = [line.strip() for line in note.splitlines() if line.strip()]
+    with get_connection() as conn:
+        init_schema(conn)
+        cid = resolve_company(conn, company)
+        written = _write_new(conn, cid, facts, "meeting-note")
+        hits = recall(conn, cid, facts[0] if facts else company, k=5)
+        opens = _open_loops(conn, cid)
+        total = _counts(conn, cid)
+        return _pack(
+            company,
+            "Logged a new note",
+            cid,
+            total,
+            [{"text": t, "distance": float(d)} for t, d in hits],
+            written,
+            [],
+            None,
+            None,
+            [{"text": t, "distance": float(d)} for t, d in hits],
+            "\n".join([f"Saved {len(written)} new fact(s)."] + written)
+            if written
+            else "That note was already in memory.",
+            "write_facts",
+            opens,
+            "remember",
+        )
+
+
 def prep_meeting(company: str, goal: str, domain: str | None = None) -> dict:
     """Research if needed, persist new facts, recall, generate a brief."""
     with get_connection() as conn:
@@ -188,23 +323,21 @@ def prep_meeting(company: str, goal: str, domain: str | None = None) -> dict:
                 "UPDATE companies SET last_researched_at = now() WHERE id = %s",
                 (cid,),
             )
-            cur.execute(
-                "SELECT COUNT(*) FROM memory_facts WHERE entity_id = %s",
-                (cid,),
-            )
-            total = cur.fetchone()[0]
         conn.commit()
-        return {
-            "company": company,
-            "company_id": str(cid),
-            "goal": goal,
-            "total_facts": total,
-            "already_knew": [{"text": t, "distance": float(d)} for t, d in before],
-            "seeded": seeded,
-            "researched": newly_written,
-            "source_url": source,
-            "research_error": research_error,
-            "recalled": [{"text": t, "distance": float(d)} for t, d in after],
-            "brief": brief,
-            "brief_source": brief_source,
-        }
+        total = _counts(conn, cid)
+        return _pack(
+            company,
+            goal,
+            cid,
+            total,
+            [{"text": t, "distance": float(d)} for t, d in before],
+            seeded,
+            newly_written,
+            source,
+            research_error,
+            [{"text": t, "distance": float(d)} for t, d in after],
+            brief,
+            brief_source,
+            _open_loops(conn, cid),
+            "prep",
+        )

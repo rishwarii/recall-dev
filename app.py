@@ -1,4 +1,4 @@
-"""Recall local meeting-prep UI. Not a production deploy — run on localhost.
+"""Recall local meeting-prep UI.
 
 Windows: $env:PYTHONIOENCODING = "utf-8"
   python app.py
@@ -34,14 +34,25 @@ _hydrate_env()
 if not os.environ.get("DATABASE_URL"):
     raise SystemExit("Set DATABASE_URL in this PowerShell session before running app.py")
 
-from agent import prep_meeting  # noqa: E402  (needs env first)
+from agent import ask_memory, list_companies, prep_meeting, remember_note  # noqa: E402
 
 app = Flask(__name__)
 
 
+def _run(fn, *args):
+    try:
+        return render_template("index.html", result=fn(*args))
+    except Exception as exc:
+        return (f"<h1>Action failed</h1><pre>{exc}</pre><p><a href='/'>Back</a></p>", 500)
+
+
 @app.get("/")
 def home():
-    return render_template("index.html", result=None)
+    try:
+        companies = list_companies()
+    except Exception:
+        companies = []
+    return render_template("index.html", result=None, companies=companies)
 
 
 @app.get("/health")
@@ -53,14 +64,21 @@ def health():
 def prep():
     company = (request.form.get("company") or "Acme Corp").strip()
     goal = (request.form.get("goal") or "pricing changes and open follow-ups").strip()
-    try:
-        result = prep_meeting(company, goal)
-    except Exception as exc:
-        return (
-            f"<h1>Prep failed</h1><pre>{exc}</pre><p><a href='/'>Back</a></p>",
-            500,
-        )
-    return render_template("index.html", result=result)
+    return _run(prep_meeting, company, goal)
+
+
+@app.post("/ask")
+def ask():
+    company = (request.form.get("company") or "Acme Corp").strip()
+    goal = (request.form.get("goal") or "What did they change about pricing?").strip()
+    return _run(ask_memory, company, goal)
+
+
+@app.post("/remember")
+def remember():
+    company = (request.form.get("company") or "Acme Corp").strip()
+    note = (request.form.get("note") or "").strip()
+    return _run(remember_note, company, note)
 
 
 if __name__ == "__main__":
